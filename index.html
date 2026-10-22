@@ -178,7 +178,7 @@ function run(st,tok){if(tok!=aiTok||!ai||S!==L||S.over||S.turn!=1||!st.length){b
  st.shift()();if(!st.length)busy=false;save();if(st.length)setTimeout(()=>run(st,tok),700)}
 
 /* ---------- audio / speech ---------- */
-let AC;
+let AC,quietUntil=0,sfg='',sfn=0;
 function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}return AC}
 /* Runs fn once the audio engine is really running. If the browser had suspended it (common on phones,
    or after the tab was in the background), resume it first; drop the sound if that takes too long. */
@@ -189,22 +189,40 @@ function tone(f,t0,d,ty,v){if(P.mute||!AC)return;let o=AC.createOscillator(),g=A
 /* gliding tone (slide whistle, thump, boing) */
 function gl(f1,f2,t0,d,ty,v){if(P.mute||!AC)return;let o=AC.createOscillator(),g=AC.createGain(),n=AC.currentTime+t0;o.type=ty;o.frequency.setValueAtTime(f1,n);o.frequency.exponentialRampToValueAtTime(f2,n+d);g.gain.setValueAtTime(v,n);g.gain.exponentialRampToValueAtTime(.001,n+d);o.connect(g);g.connect(AC.destination);o.start(n);o.stop(n+d)}
 function nz(t0,d,f,v){if(P.mute||!AC)return;let n=AC.sampleRate*d|0,b=AC.createBuffer(1,n,AC.sampleRate),x=b.getChannelData(0);for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*(1-i/n);let s=AC.createBufferSource(),l=AC.createBiquadFilter(),g=AC.createGain();s.buffer=b;l.type='bandpass';l.frequency.value=f;g.gain.value=v;s.connect(l);l.connect(g);g.connect(AC.destination);s.start(AC.currentTime+t0)}
-/* special cards: J♦ = sparkly chime, Q♠ = punchy "da-da-DUN!" + crash + cartoon slide-whistle drop + boing */
-function sfx(c){if((c!='JD'&&c!='QS')||P.mute)return;whenReady(()=>{try{
- if(c=='JD')[784,988,1175,1568,2093].forEach((f,i)=>tone(f,i*.08,.6,'triangle',.22));
- else{
-  [[392,0,.12],[392,.15,.12],[294,.3,.6]].forEach(([f,t,d])=>{tone(f,t,d,'square',.08);tone(f*2,t,d,'triangle',.07)});
-  gl(150,40,.3,.5,'sine',.45);nz(.3,.7,5500,.3);
-  gl(1500,350,.85,.45,'triangle',.12);
-  gl(260,520,1.35,.12,'sine',.14);gl(520,300,1.47,.2,'sine',.14)}
- }catch(e){}})}
+/* special cards: J♦ = sparkly chime (starts just after the lay-down clack so it isn't buried),
+   Q♠ = punchy "da-da-DUN!" + crash + cartoon slide-whistle drop + boing.
+   On phones a spoken voice line silences sound effects, so: speech already talking is cut off,
+   and new voice lines wait (quietUntil) until the special sound has finished. */
+function sfx(c){if((c!='JD'&&c!='QS')||P.mute)return;
+ quietUntil=Math.max(quietUntil,Date.now()+(c=='QS'?2300:1500));
+ let was=false;try{was=!!(window.speechSynthesis&&(speechSynthesis.speaking||speechSynthesis.pending));if(was)speechSynthesis.cancel()}catch(e){}
+ const play=()=>whenReady(()=>{try{
+  if(c=='JD'){
+   [784,988,1175,1568,2093,2637].forEach((f,i)=>{tone(f,.12+i*.07,.7,'triangle',.3);tone(f*2,.12+i*.07,.4,'sine',.07)});
+   nz(.12,.5,7000,.25)}
+  else{
+   [[392,0,.12],[392,.15,.12],[294,.3,.6]].forEach(([f,t,d])=>{tone(f,t,d,'square',.08);tone(f*2,t,d,'triangle',.07)});
+   gl(150,40,.3,.5,'sine',.45);nz(.3,.7,5500,.3);
+   gl(1500,350,.85,.45,'triangle',.12);
+   gl(260,520,1.35,.12,'sine',.14);gl(520,300,1.47,.2,'sine',.14)}
+  }catch(e){}});
+ was?setTimeout(play,150):play()}
+/* plays every J♦/Q♠ event exactly once, independent of how often the screen redraws */
+function playSpecials(){if(!S||!S.fx)return;
+ if(sfg!=S.gid){sfg=S.gid;sfn=S.fx.n;return}
+ const evs=(S.fl&&S.fl.length?S.fl:[S.fx]).filter(e=>e.n>sfn);
+ if(!evs.length)return;
+ sfn=Math.max(sfn,...evs.map(e=>e.n));
+ evs.forEach(e=>(e.c||[]).forEach(sfx))}
 function snd(n){if(P.mute)return;whenReady(()=>{try{const T=tone,Z=nz;const M={tap:()=>{Z(0,.04,3200,.25);T(700,0,.05,'sine',.06)},draw:()=>{Z(0,.13,2200,.5);Z(.06,.08,4200,.3)},pile:()=>{for(let i=0;i<5;i++)Z(i*.06,.08,2200+i*350,.4)},shuf:()=>{for(let i=0;i<9;i++)Z(i*.05,.06,1800+i*200,.35)},meld:()=>{Z(0,.06,1500,.5);T(220,0,.15,'sine',.3);T(523,.08,.3,'triangle',.14);T(659,.16,.35,'triangle',.14)},ext:()=>{Z(0,.05,2500,.3);T(587,.02,.14,'triangle',.16);T(784,.09,.2,'triangle',.16)},disc:()=>{Z(0,.09,1800,.6);T(170,0,.12,'sine',.25)},bad:()=>{T(150,0,.18,'square',.08);T(115,.13,.22,'square',.08)},turn:()=>{T(988,0,.18,'sine',.09);T(1319,.1,.25,'sine',.09)},bq:()=>{[[587,0],[740,.14],[880,.28],[1175,.42]].forEach(([f,t])=>{T(f,t,.3,'sawtooth',.07);T(f*1.01,t,.3,'sawtooth',.07)});T(294,0,.25,'triangle',.18);T(220,.28,.5,'triangle',.18)},win:()=>[523,659,784,1047,1319].forEach((f,i)=>T(f,i*.12,.45,'triangle',.2)),lose:()=>[392,349,311,261].forEach((f,i)=>T(f,i*.18,.5,'sawtooth',.1))};
  if(M[n])M[n]()}catch(e){}});
  try{navigator.vibrate&&navigator.vibrate(n=='bad'?[25,40,25]:n=='bq'?[60,40,60]:10)}catch(e){}}
-function say(t,l,p,r,fb){try{if(P.mute||!P.voice)return;let V=speechSynthesis.getVoices(),v=V.find(x=>x.lang.replace('_','-').toLowerCase()==l.toLowerCase())||V.find(x=>x.lang.toLowerCase().startsWith(l.slice(0,2)));let u=new SpeechSynthesisUtterance(v||!fb?t:fb);if(v)u.voice=v;u.lang=l;u.pitch=p;u.rate=r;u.volume=1;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+function say(t,l,p,r,fb){try{if(P.mute||!P.voice)return;
+ const w=quietUntil-Date.now();if(w>0){setTimeout(()=>say(t,l,p,r,fb),w);return}
+ let V=speechSynthesis.getVoices(),v=V.find(x=>x.lang.replace('_','-').toLowerCase()==l.toLowerCase())||V.find(x=>x.lang.toLowerCase().startsWith(l.slice(0,2)));let u=new SpeechSynthesisUtterance(v||!fb?t:fb);if(v)u.voice=v;u.lang=l;u.pitch=p;u.rate=r;u.volume=1;u.onend=u.onerror=()=>{try{AC&&AC.state!='running'&&AC.resume()}catch(e){}};speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
 function toast(h,c){let d=document.createElement('div');d.className='bq';d.innerHTML=h;if(c)d.style.color=c;document.body.append(d);setTimeout(()=>d.remove(),2300)}
 function bloque(){toast('BLOQU\u00c9!');snd('bq');say('Bloqu\u00e9 !','fr-FR',1.25,.8,'Bloh-kay!')}
-/* shown when you OR your opponent is down to one card; delayed slightly if a Bloqué is playing at the same moment */
+/* shown when you OR your opponent is down to one card; the voice waits if a Bloqué or a special-card sound is playing */
 function oneCard(dl){setTimeout(()=>{toast('ONE CARD!<small>\u261d\ufe0f</small>','#ffd54f');say('One card left!','en-US',.9,.95)},dl||0)}
 try{speechSynthesis.getVoices()}catch(e){}
 function confetti(){for(let i=0;i<28;i++){let e=document.createElement('div');e.className='cf';e.textContent='♠♥♦♣'[i%4];e.style.cssText=`left:${Math.random()*100}%;animation-delay:${Math.random()*.8}s;color:${i%4%3?'#ff5252':'#f3ead2'};font-size:${16+Math.random()*18}px`;document.body.append(e);setTimeout(()=>e.remove(),3500)}}
@@ -239,10 +257,10 @@ function panH(){if(!pan)return'';const X='<button data-a="close">Close</button>'
  return''}
 function render(){
  S=ai?L:D;const a=$('#app'),scr=[...a.querySelectorAll('.sec')].map(e=>e.scrollTop);
- if(!S||menu){if(S&&S.fx)fxn=S.fx.n;a.innerHTML=menuH()+panH();return}
+ if(!S||menu){if(S&&S.fx){fxn=S.fx.n;sfg=S.gid;sfn=S.fx.n}a.innerHTML=menuH()+panH();return}
  me=ai?0:S.seats.indexOf(myid);const v=me<0?0:me,o=1-v;
  if(fxg!=S.gid){fxg=S.gid;fxn=S.fx.n;seen=S.bq;oc=[S.hands[0].length==1,S.hands[1].length==1];es=S.over?S.round+'-'+S.scores:''}
- const f=S.fx,fx0=fxn,nf=f.n>fxn,mine=me>=0&&!S.over&&S.turn==me&&!pend;
+ const f=S.fx,nf=f.n>fxn,mine=me>=0&&!S.over&&S.turn==me&&!pend;
  dh=view(S.hands[v]);
  const pl_=mine&&S.phase=='play',top=S.pile[S.pile.length-1],dr=mine&&S.phase=='draw',bk=dr&&S.blk==me,cpile=dr&&!!top&&!bk&&cp(me);
  const hn=hlIdx(dh,S.hl[v]||[]),sc=sel.map(i=>dh[i]).filter(Boolean),pl=pl_?dh.map((c,i)=>i).filter(i=>ext(me,[dh[i]])>=0):[];
@@ -270,8 +288,9 @@ function render(){
 ${me>=0?'<button data-a="next">Next round</button>':''}</div></div>`}
  a.innerHTML=h+panH();a.querySelectorAll('.sec').forEach((e,i)=>e.scrollTop=scr[i]||0);
  /* sound & effects, driven by the shared state so both players hear everything.
-    Special-card sounds come from the event log, so none is lost even if a state update was skipped. */
- if(nf){fxn=f.n;snd(f.k);(S.fl&&S.fl.length?S.fl.filter(e=>e.n>fx0):[f]).forEach(e=>(e.c||[]).forEach(sfx))}
+    Special-card sounds have their own tracker (playSpecials) so none is lost or doubled. */
+ if(nf){fxn=f.n;snd(f.k)}
+ playSpecials();
  const bqn=seen>=0&&S.bq>seen;if(bqn)bloque();seen=S.bq;
  if(note!=ln){if(note)snd('bad');ln=note}
  if(mine&&S.phase=='draw'){if(!tp)snd('turn');tp=1}else tp=0;
