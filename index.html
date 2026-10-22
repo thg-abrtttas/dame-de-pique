@@ -179,7 +179,10 @@ function run(st,tok){if(tok!=aiTok||!ai||S!==L||S.over||S.turn!=1||!st.length){b
 
 /* ---------- audio / speech ---------- */
 let AC,quietUntil=0,sfg='',sfn=0;
-function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}return AC}
+let kaOn=0;
+function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}
+ if(AC&&!kaOn){kaOn=1;try{const b=AC.createBuffer(1,AC.sampleRate,AC.sampleRate),x=b.getChannelData(0);for(let i=0;i<x.length;i++)x[i]=(Math.random()*2-1)*.02;const s=AC.createBufferSource(),g=AC.createGain();s.buffer=b;s.loop=true;g.gain.value=.05;s.connect(g);g.connect(AC.destination);s.start()}catch(e){kaOn=0}}
+ return AC}
 /* Runs fn once the audio engine is really running. If the browser had suspended it (common on phones,
    or after the tab was in the background), resume it first; drop the sound if that takes too long. */
 function whenReady(fn){const A=ac();if(!A)return;if(A.state=='running')return fn();const t=Date.now();try{A.resume().then(()=>{if(Date.now()-t<1500)fn()}).catch(()=>{})}catch(e){}}
@@ -193,11 +196,15 @@ function nz(t0,d,f,v){if(P.mute||!AC)return;let n=AC.sampleRate*d|0,b=AC.createB
    Q♠ = punchy "da-da-DUN!" + crash + cartoon slide-whistle drop + boing.
    On phones a spoken voice line silences sound effects, so: speech already talking is cut off,
    and new voice lines wait (quietUntil) until the special sound has finished. */
-function sfx(c){if((c!='JD'&&c!='QS')||P.mute)return;
+function chip(t,c){const d=document.createElement('div');d.className='bq';d.style.cssText='top:24%;font-size:26px;color:'+c;d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),1800)}
+function sfx(c){if(c!='JD'&&c!='QS')return;
+ chip(c=='JD'?'✨ J♦ ✨':'♠ Q♠ ♠','#ffd54f');
+ if(P.mute)return;
  quietUntil=Math.max(quietUntil,Date.now()+(c=='QS'?2300:1500));
  let was=false;try{was=!!(window.speechSynthesis&&(speechSynthesis.speaking||speechSynthesis.pending));if(was)speechSynthesis.cancel()}catch(e){}
  const play=()=>whenReady(()=>{try{
   if(c=='JD'){
+   tone(392,.05,.6,'sine',.28);tone(523,.05,.6,'sine',.2);
    [784,988,1175,1568,2093,2637].forEach((f,i)=>{tone(f,.12+i*.07,.7,'triangle',.3);tone(f*2,.12+i*.07,.4,'sine',.07)});
    nz(.12,.5,7000,.25)}
   else{
@@ -207,7 +214,6 @@ function sfx(c){if((c!='JD'&&c!='QS')||P.mute)return;
    gl(260,520,1.35,.12,'sine',.14);gl(520,300,1.47,.2,'sine',.14)}
   }catch(e){}});
  was?setTimeout(play,150):play()}
-/* plays every J♦/Q♠ event exactly once, independent of how often the screen redraws */
 function playSpecials(){if(!S||!S.fx)return;
  if(sfg!=S.gid){sfg=S.gid;sfn=S.fx.n;return}
  const evs=(S.fl&&S.fl.length?S.fl:[S.fx]).filter(e=>e.n>sfn);
