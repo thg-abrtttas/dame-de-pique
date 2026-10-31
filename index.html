@@ -96,8 +96,8 @@ function fresh(){return{gid:Math.random().toString(36).slice(2,8),v:0,round:1,st
 function fx(k,t,o){const e=Object.assign({n:(S.fx?S.fx.n:0)+1,k,by:t},o||{});S.fx=e;S.fl=(S.fl||[]).concat([e]).slice(-24)}
 function deal(){let d=[];for(let k=0;k<4;k++){for(const r of R)for(const s of SU)d.push(r+s);d.push('X*','X*')}shuf(d);
 S.hands=[sortH(d.splice(0,15)),sortH(d.splice(0,15))];S.pile=[d.pop()];S.deck=d;S.melds=[[],[]];S.turn=S.starter;S.phase='draw';S.over=false;S.res=null;S.out=-1;S.hl=[[],[]];S.pk=[[],[]];S.blk=-1;S.st=true;fx('shuf',-1);S.msg=['Round '+S.round+' — first turn: ',S.turn,'.']}
-/* a new set = 2+ real cards of one rank plus exactly ONE wild (Joker or 2). Adding to an existing set has no wild limit. */
-function okSet(cs){if(cs.length<3)return null;let n=cs.filter(c=>!wild(c));if(n.length<2||cs.length-n.length!=1)return null;let r=rk(n[0]);return n.every(c=>rk(c)==r)?r:null}
+/* a new set = 3+ cards: 2+ real cards of one rank and at most ONE wild (Joker or 2). Adding to an existing set has no wild limit. */
+function okSet(cs){if(cs.length<3)return null;let n=cs.filter(c=>!wild(c));if(n.length<2||cs.length-n.length>1)return null;let r=rk(n[0]);return n.every(c=>rk(c)==r)?r:null}
 function ext(t,cs){const ms=S.melds[t];if(!cs.length||!ms.length)return -1;const n=cs.filter(c=>!wild(c));if(n.length){const r=rk(n[0]);return n.every(c=>rk(c)==r)?ms.findIndex(m=>m.r==r):-1}const k=ms.findIndex(m=>m.r!='2');return k<0?0:k}
 function cp(t){let p=S.pile[S.pile.length-1];if(p&&S.st&&S.pile.length==1&&wild(p))return true;return !!p&&S.hands[t].filter(c=>rk(c)==rk(p)).length>=2}
 function dStock(t){if(!S.deck.length){let p=S.pile.pop();S.deck=shuf(S.pile);S.pile=p?[p]:[]}if(!S.deck.length)return endRound();
@@ -127,7 +127,7 @@ function act(t,a,p){p=p||{};
   return'Draw a card first.'}
  if(a=='stock'||a=='pile')return'You already drew this turn.';
  const cs=p.c||[],i=ix(t,cs);if(!i||!i.length)return'Those cards are not in your hand.';
- if(a=='meld')return doMeld(t,i)?'':'A new set needs 2 or more cards of the same rank plus exactly one Joker or 2.';
+ if(a=='meld')return doMeld(t,i)?'':'A new set needs 3 or more cards: at least 2 of the same rank, with at most one Joker or 2.';
  if(a=='add'){const m=p.m!=null?p.m:ext(t,cs);return doAdd(t,i,m)?'':'Those cards don’t fit that set.'}
  if(a=='disc'){if(i.length!=1)return'Discard exactly one card.';doDisc(t,i[0]);return''}
  return'Unknown action.'}
@@ -146,9 +146,10 @@ function go(a,c,m){const p={c:c||[],m};
 function plan(h,rs){h=h.slice();rs=rs.slice();const A=[],tk=c=>{const i=h.indexOf(c);if(i>=0)h.splice(i,1)};
  h.filter(c=>!wild(c)&&rs.includes(rk(c))).forEach(c=>{tk(c);A.push({k:'add',c:[c],r:rk(c)})});
  const by={};h.forEach(c=>{if(!wild(c))(by[rk(c)]=by[rk(c)]||[]).push(c)});
- /* every new set needs 2+ real cards and exactly one wild; spend the wilds on the most valuable ranks first */
+ Object.keys(by).forEach(r=>{if(by[r].length>=3){by[r].forEach(c=>tk(c));rs.push(r);A.push({k:'meld',c:by[r].slice(),r})}});
+ /* pairs need exactly one wild; spend the wilds on the most valuable ranks first */
  const tot=r=>by[r].reduce((s,c)=>s+pts(c),0);
- Object.keys(by).filter(r=>by[r].length>=2).sort((x,y)=>tot(y)-tot(x)).forEach(r=>{const w=h.find(wild);if(w){tk(w);by[r].forEach(c=>tk(c));rs.push(r);A.push({k:'meld',c:[...by[r],w],r})}});
+ Object.keys(by).filter(r=>by[r].length==2).sort((x,y)=>tot(y)-tot(x)).forEach(r=>{const w=h.find(wild);if(w){tk(w);by[r].forEach(c=>tk(c));rs.push(r);A.push({k:'meld',c:[...by[r],w],r})}});
  const tr=rs.find(r=>r!='2')||rs[0];if(tr)h.filter(wild).forEach(w=>{tk(w);A.push({k:'add',c:[w],r:tr})});
  return{acts:A,left:h}}
 const val=(h,rs)=>{const p=plan(h,rs);return p.acts.reduce((s,a)=>s+a.c.reduce((u,c)=>u+pts(c),0),0)-.6*p.left.reduce((s,c)=>s+pts(c),0)};
@@ -260,7 +261,7 @@ function menuH(){const wt=room&&net.includes('Waiting for your');return`<div cla
 ${net?'<p style="font-size:14px;color:var(--gold)">'+net+'</p>':''}${wt?'<input id="lk" readonly value="'+lnk()+'" style="width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1px solid #e6c36a88;background:#0006;color:#f3ead2;font:13px sans-serif"><button data-a="share">Copy invite link</button>'+(location.protocol=='file:'?'<p style="font-size:12px">This link only works once the file is hosted online (e.g. GitHub Pages). Until then, share the room code.</p>':''):''}
 ${S?'<button class="s2" data-a="resume">Resume current game</button>':''}
 <div style="display:flex;gap:6px"><button class="s2" data-a="pan" data-p="pts">Points</button><button class="s2" data-a="pan" data-p="stats">Stats</button><button class="s2" data-a="pan" data-p="set">Settings</button></div>
-<details><summary>How to play</summary><p style="text-align:left;font-size:13px">Each turn: draw from the deck (tap the hidden card), <i>or</i> take the whole discard pile if you hold 2 cards of the top card's rank. Exception: if the very first open card is a Joker or 2, anyone may take it for free. Then lay down a set: 2 or more cards of the same rank plus exactly one wild (a Joker or a 2), e.g. 7-7-Joker or 9-9-9-2. Once a set is down you can add real cards of its rank and any number of wilds to it. Add cards to your sets, and finally discard one card. <b>Bloqué:</b> if you discard a rank your opponent has a set of, they must draw from the deck (not if that discard is your last card and ends the round). If you lay down or add your last card, the round ends immediately (no discard needed). Sets score +, cards left in hand score −. Tap <b>Points</b> for card values.<br><br><b>Tips:</b> double-tap a card to select every card of that rank, 💡 suggests a play, and you can drag cards onto your sets or onto the discard pile. Cards with a blue + can be added to a blue-glowing set; green glow marks cards you just picked up. 2s and Jokers are always grouped together at the end of your hand.</p></details></div></div>`}
+<details><summary>How to play</summary><p style="text-align:left;font-size:13px">Each turn: draw from the deck (tap the hidden card), <i>or</i> take the whole discard pile if you hold 2 cards of the top card's rank. Exception: if the very first open card is a Joker or 2, anyone may take it for free. Then lay down a set: 3 or more cards with at least 2 of the same rank and at most one wild (a Joker or a 2), e.g. 9-9-9, 7-7-Joker or 9-9-9-2. Once a set is down you can add real cards of its rank and any number of wilds to it. Add cards to your sets, and finally discard one card. <b>Bloqué:</b> if you discard a rank your opponent has a set of, they must draw from the deck (not if that discard is your last card and ends the round). If you lay down or add your last card, the round ends immediately (no discard needed). Sets score +, cards left in hand score −. Tap <b>Points</b> for card values.<br><br><b>Tips:</b> double-tap a card to select every card of that rank, 💡 suggests a play, and you can drag cards onto your sets or onto the discard pile. Cards with a blue + can be added to a blue-glowing set; green glow marks cards you just picked up. 2s and Jokers are always grouped together at the end of your hand.</p></details></div></div>`}
 function panH(){if(!pan)return'';const X='<button data-a="close">Close</button>';
  if(pan=='pts')return`<div class="ov"><div class="card"><h2>Card points</h2><table>
 <tr><td>3 – 9</td><td><b>5</b></td></tr><tr><td>10, J, Q, K</td><td><b>10</b></td></tr><tr><td>Ace</td><td><b>15</b></td></tr><tr><td>2 (wild)</td><td><b>25</b></td></tr><tr><td>Joker (wild)</td><td><b>50</b></td></tr><tr><td>J♦ Jack of Diamonds</td><td><b>50</b></td></tr><tr><td>Q♠ Dame de Pique</td><td><b>100</b></td></tr></table>
@@ -292,7 +293,7 @@ function render(){
  const pill=i=>{const L2=live(i),fl=i==v||S.over,d=fl?L2.d:L2.m;
   return`<div class="pill ${S.turn==i&&!S.over?'on':''}"><div class="pn">${nm(i)}</div><div class="pr"><span>${S.over?'Total (updated)':'Past rounds'}</span><b>${S.scores[i]}</b></div><div class="pr"><span>This round</span><b class="${d<0?'neg':''}">${sg(d)}</b></div><div class="ps">${fl?'sets +'+L2.m+' · in hand −'+L2.h:'sets on table only'}</div></div>`};
  const st=!ai&&room?(!conn?'⚠ Reconnecting to the game server…':pf?'⚠ Connection problem — retrying…':peerOff?'⚠ Your partner seems offline or reconnecting…':''):'';
- let h=`<div class="bar"><h1>♠ DAME · R${S.round}</h1><span class="bb"><button class="s2" data-a="opt" data-k="mute">${P.mute?'🔇':'🔊'}</button><button class="s2" data-a="pan" data-p="set">⚙</button><button class="s2" data-a="pan" data-p="pts">Points</button><button class="s2" data-a="menu">Menu</button></span></div>`;
+ let h=`<div class="bar"><h1>♠ Dame de Pique · R${S.round}</h1><span class="bb"><button class="s2" data-a="opt" data-k="mute">${P.mute?'🔇':'🔊'}</button><button class="s2" data-a="pan" data-p="set">⚙</button><button class="s2" data-a="pan" data-p="pts">Points</button><button class="s2" data-a="menu">Menu</button></span></div>`;
  if(st)h+=`<div class="lbl" style="text-align:center;margin:0">${st}</div>`;
  h+=`<div class="sb">${pill(v)}${pill(o)}</div>`;
  h+=`<div class="sec ${S.turn==o&&!S.over?'turn':''}" style="max-height:30%;overflow:auto"><div class="lbl">${S.turn==o&&!S.over?'▶ THEIR TURN · ':''}${nm(o)} · ${S.hands[o].length} cards</div><div class="row">${S.melds[o].map((m,i)=>meldH(m,i,{a:pp(o,i)})).join('')||'<span class="lbl">No sets yet</span>'}</div></div>`;
