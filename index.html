@@ -380,19 +380,31 @@ $('#app').addEventListener('pointerdown',e=>{
    So there is no heartbeat; liveness comes from the server's own keep-alive events, and a "sync" request is only sent
    after a long silence while waiting for the partner. */
 function lnk(){return location.href.split('#')[0]+'#'+room}
+/* RELAY: address of your Cloudflare relay Worker, e.g. 'wss://dame-de-pique-relay.YOURNAME.workers.dev'.
+   While it is empty the game falls back to the free ntfy.sh server (limited to 250 messages per 12 h). */
+const RELAY_DEFAULT='wss://dame-de-pique-relay.dame-de-pique-relay.workers.dev';const RELAY=(ld('dp_relay')||RELAY_DEFAULT).replace(/\/+$/,'');
 const NT='https://ntfy.sh/',mid=Math.random().toString(36).slice(2,8);
-let ev=null,iv=null,to=null,hb=null,pt=null,rt=null,seq=0,gen=0,lastId='',lastRx=0,lastSync=0,lastRe=0,bo=0,subs=null;
+let ws=null,ev=null,iv=null,to=null,hb=null,pt=null,rt=null,seq=0,gen=0,lastId='',lastRx=0,lastSync=0,lastRe=0,bo=0,subs=null;
 /* publish with a timeout and retries. fetch() does NOT reject on HTTP errors (429 quota, 5xx), so check r.ok. */
+function retryPub(m,n,g,st){if(g!=gen)return;if(!pf){pf=1;render()}
+ if(n<(RELAY?9:5))setTimeout(()=>{if(g!=gen||!room)return;m.t=='s'&&D?pub({t:'s',s:D},n+1):pub(m,n+1)},[1000,2500,6000,12000,20000,20000,20000,20000,20000][n]*(st==429?3:1))}
 function pub(m,n){n=n||0;const g=gen;m.f=mid;m.q=++seq;
+ if(RELAY){let ok=0;try{if(ws&&ws.readyState==1){ws.send(JSON.stringify(m));ok=1}}catch(e){}
+  if(ok){if(pf){pf=0;render()}return Promise.resolve()}retryPub(m,n,g,0);return Promise.resolve()}
  const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),12000);
  return fetch(NT+'dpq-'+room,{method:'POST',body:JSON.stringify(m),signal:ac.signal}).then(r=>{clearTimeout(tm);if(!r.ok)throw r.status;if(pf){pf=0;render()}}).catch(st=>{clearTimeout(tm);
-  if(g!=gen)return;if(!pf){pf=1;render()}
-  if(n<5)setTimeout(()=>{if(g!=gen||!room)return;m.t=='s'&&D?pub({t:'s',s:D},n+1):pub(m,n+1)},[1000,2500,6000,12000,20000][n]*(st==429?3:1))})}
-function cleanup(){gen++;if(ev){ev.close();ev=null}clearInterval(iv);clearInterval(hb);clearTimeout(to);clearTimeout(pt);clearTimeout(rt);conn=0;pend=0;peerOff=0;pf=0;bo=0}
+  retryPub(m,n,g,st)})}
+function cleanup(){gen++;if(ev){ev.close();ev=null}if(ws){try{ws.close()}catch(e){}ws=null}clearInterval(iv);clearInterval(hb);clearTimeout(to);clearTimeout(pt);clearTimeout(rt);conn=0;pend=0;peerOff=0;pf=0;bo=0}
 /* (re)opens the live connection. EventSource retries by itself after a network drop, but gives up for good if the
    server answers with an error (e.g. 429/503) and can hang half-dead without ever erroring, so connect() is also
    called on a backoff timer and by the watchdog in tick(). `since` replays anything missed in the gap. */
-function connect(){const g=gen;if(ev){ev.close();ev=null}clearTimeout(rt);lastRx=Date.now();
+function connectWS(){const g=gen;if(ws){try{ws.close()}catch(e){}ws=null}clearTimeout(rt);lastRx=Date.now();
+ let w0;try{w0=ws=new WebSocket(RELAY+'/room/'+encodeURIComponent(room))}catch(e){bo=Math.min(bo?bo*2:1500,30000);rt=setTimeout(()=>{if(g==gen)connect()},bo);return}
+ w0.onopen=()=>{if(g!=gen||w0!==ws)return;conn=1;bo=0;lastRx=peer=Date.now();subs.onopen&&subs.onopen()};
+ w0.onmessage=e=>{if(g!=gen||w0!==ws)return;lastRx=Date.now();if(e.data==='pong')return;try{const m=JSON.parse(e.data);if(m.f!=mid){peer=Date.now();const w=peerOff;peerOff=0;subs.onm(m);if(w)render()}}catch(x){}};
+ w0.onclose=()=>{if(g!=gen||w0!==ws)return;ws=null;if(conn){conn=0;render()}bo=Math.min(bo?bo*2:1000,15000);rt=setTimeout(()=>{if(g==gen)connect()},bo)};
+ w0.onerror=()=>{try{w0.close()}catch(e){}}}
+function connect(){if(RELAY)return connectWS();const g=gen;if(ev){ev.close();ev=null}clearTimeout(rt);lastRx=Date.now();
  const e0=ev=new EventSource(NT+'dpq-'+room+'/sse'+(lastId?'?since='+encodeURIComponent(lastId):''));
  e0.addEventListener('open',e=>{lastRx=Date.now();if(e.data!==undefined)return;const first=!conn;conn=1;bo=0;peer=Date.now();if(first&&subs.onopen)subs.onopen();else render()});
  e0.addEventListener('keepalive',()=>{lastRx=Date.now()});
@@ -407,9 +419,10 @@ function askSync(force){const n=Date.now();if(!room||(!force&&n-lastSync<15000))
 function resync(){if(!D||Date.now()-lastRe<15000)return;lastRe=Date.now();const mi=D.seats.indexOf(myid);if(D.turn!=mi||D.over)sendS();askSync(1)}
 /* runs every 15s, publishes nothing unless we have been waiting a long time */
 function startTick(){clearInterval(hb);peer=Date.now();hb=setInterval(()=>{if(!room)return;const n=Date.now();
- if(ev&&(conn?n-lastRx>80000:n-lastRx>45000))connect(); /* silent/stuck connection: the server keep-alive (~45s) stopped arriving */
+ if(RELAY){if(ws&&ws.readyState==1)try{ws.send('ping')}catch(e){}if(n-lastRx>(conn?40000:25000))connect()} /* relay: ping/pong every 15s; silent for 40s = dead socket */
+ else if(ev&&(conn?n-lastRx>80000:n-lastRx>45000))connect(); /* silent/stuck connection: the server keep-alive (~45s) stopped arriving */
  const waiting=!!D&&!D.over&&D.turn!=D.seats.indexOf(myid);
- if(waiting&&n-peer>75000)askSync();
+ if(waiting&&n-peer>75000&&n-lastSync>75000)askSync();
  const off=waiting&&n-peer>240000;if(off!=peerOff){peerOff=off;render()}},15000)}
 function onMsg(m){
  if(m.t=='join'&&myid=='host'){if(!D){D=fresh();D.seats=['host','guest'];S=D;deal();D.v=1}net='';menu=false;persist();sendS();render()}
