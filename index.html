@@ -35,6 +35,27 @@ button.s2{background:#0006;color:#f3ead2;border:1px solid #e6c36a66}button:disab
 .card h2{margin:0 0 10px;color:var(--gold)}.card button{display:block;width:100%;margin:8px 0}
 table{width:100%;border-collapse:collapse;margin:8px 0}td,th{padding:5px;border-bottom:1px solid #e6c36a33}
 details{font-size:13px;opacity:.9;margin-top:10px}
+/* Laid-down cards: show every card, not a stacked top card. */
+html,body{height:auto;min-height:100%;overflow-y:auto}
+.w{height:auto;min-height:100dvh;overflow:visible}
+.sec .row{display:flex;flex-direction:column;align-items:stretch;gap:7px}
+.sec .meld{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-start;width:100%;max-width:none;gap:5px;padding:7px 28px 7px 7px;overflow:visible}
+.sec .meld .c,.sec .meld .c:last-of-type{position:relative;flex:0 0 36px;margin:0!important;transform:none;z-index:auto}
+.sec .meld i{right:7px;top:7px}
+
+.player-panel{border:2px solid #ffffff22;transition:border-color .2s,box-shadow .2s;background:#0003}
+.player-panel.active{border-color:var(--gold);box-shadow:0 0 0 2px #e6c36a55,0 0 20px #e6c36a55;background:#294f31}
+.turn-label{color:#ffe18d;font-weight:bold;font-size:13px}
+.scoreline{display:flex;gap:10px;flex-wrap:wrap;font:12px sans-serif;margin:4px 0 8px;color:#f3ead2}
+.scoreline b{color:#ffe18d}.one-card{color:#ffce5b;font-weight:bold;animation:glow 1s infinite alternate;padding:3px;border-radius:5px}
+.special-flash{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:#f4ca3428;animation:specialFade 2.3s both}
+.special-flash .big{font:bold clamp(35px,10vw,78px) Georgia,serif;text-align:center;color:#ffe69c;text-shadow:0 3px 10px #000,0 0 35px #ffce46;padding:20px;animation:specialPop .5s both}
+@keyframes specialFade{0%{opacity:0}12%,75%{opacity:1}100%{opacity:0}}@keyframes specialPop{from{transform:scale(.35) rotate(-8deg)}to{transform:scale(1)}}
+.one-flash{position:fixed;left:50%;top:23%;transform:translateX(-50%);z-index:11;pointer-events:none;padding:16px 25px;border:2px solid #ffe18d;border-radius:16px;background:#522b13;color:#ffe18d;font:bold 25px Georgia,serif;box-shadow:0 0 30px #ffb300aa;animation:specialFade 2.6s both;white-space:nowrap}
+.rules-panel{position:fixed;inset:0;z-index:20;background:#000d;display:flex;align-items:center;justify-content:center;padding:14px}
+.rules-inner{width:min(440px,100%);max-height:85vh;overflow:auto;background:#103c2c;border:2px solid var(--gold);border-radius:15px;padding:18px}
+.rules-inner h2{color:var(--gold);margin-top:0}.rules-inner button{width:100%;margin-top:10px}
+.score-history{font:12px sans-serif;margin:8px 0}.score-history th,.score-history td{text-align:center}
 </style></head><body><div class="w" id="app"></div>
 <script>
 const R=['A','2','3','4','5','6','7','8','9','10','J','Q','K'],SU=['S','H','D','C'],SY={S:'♠',H:'♥',D:'♦',C:'♣','*':'★'};
@@ -46,9 +67,9 @@ const shuf=a=>{for(let i=a.length;i--;){let j=Math.random()*(i+1)|0;[a[i],a[j]]=
 const $=q=>document.querySelector(q);
 let S=null,D=null,L=null,ai=false,sel=[],me=0,myid=null,room='',net='',busy=false,note='',menu=false,seen=-1,mute=false,ln='',tp=0,es='';
 const nm=i=>ai?(i==0?'You':'The computer'):(i==me?'You':(me<0?'Player '+(i+1):'Your partner'));
-function fresh(){return{round:1,starter:0,scores:[0,0],seats:[null,null],bq:0}}
+function fresh(){return{round:1,starter:0,scores:[0,0],history:[],seats:[null,null],bq:0,oneEvent:0,oneWho:-1}}
 function deal(){let d=[];for(let k=0;k<4;k++){for(const r of R)for(const s of SU)d.push(r+s);d.push('X*','X*')}shuf(d);
-S.hands=[sortH(d.splice(0,15)),sortH(d.splice(0,15))];S.pile=[d.pop()];S.deck=d;S.melds=[[],[]];S.turn=S.starter;S.phase='draw';S.over=false;S.res=null;S.out=-1;S.hl=[[],[]];S.blk=-1;snd('shuf');S.msg='Round '+S.round+': '+(ai?(S.turn?'the computer starts.':'you start.'):'seat '+(S.turn+1)+' starts.')}
+S.hands=[sortH(d.splice(0,15)),sortH(d.splice(0,15))];S.pile=[d.pop()];S.deck=d;S.melds=[[],[]];S.turn=S.starter;S.phase='draw';S.over=false;S.res=null;S.out=-1;S.hl=[[],[]];S.blk=-1;seen=-1;snd('shuf');S.msg='Round '+S.round+': '+(ai?(S.turn?'the computer starts.':'you start.'):'seat '+(S.turn+1)+' starts.')}
 function okSet(cs){if(cs.length<3)return null;let n=cs.filter(c=>!wild(c));if(n.length<2||cs.length-n.length>1)return null;let r=rk(n[0]);return n.every(c=>rk(c)==r)?r:null}
 function dStock(t){if(!S.deck.length){let p=S.pile.pop();S.deck=shuf(S.pile);S.pile=[p]}if(!S.deck.length)return endRound();
 let c=S.deck.pop();S.hands[t].push(c);sortH(S.hands[t]);S.hl[t]=[c];S.blk=-1;S.phase='play';S.msg=nm(t)+' drew from the deck.';snd('draw')}
@@ -63,13 +84,35 @@ function confetti(){for(let i=0;i<28;i++){let e=document.createElement('div');e.
 function endFx(w){snd(w?'win':'lose');if(w)confetti()}
 function hlIdx(h,l){let u=[];l.forEach(c=>{let i=h.findIndex((x,k)=>x==c&&!u.includes(k));if(i>=0)u.push(i)});return u}
 function ext(t,ix){let ms=S.melds[t],cs=ix.map(i=>S.hands[t][i]),n=cs.filter(c=>!wild(c));if(!cs.length||!ms.length)return -1;if(n.length){let r=rk(n[0]);return n.every(c=>rk(c)==r)?ms.findIndex(m=>m.r==r):-1}let k=ms.findIndex(m=>m.r!='2');return k<0?0:k}
-function bloque(){let d=document.createElement('div');d.className='bq';d.textContent='BLOQUÉÉÉ!';document.body.append(d);snd('bq');setTimeout(()=>d.remove(),2200);try{let u=new SpeechSynthesisUtterance('Bloqueeeé');u.lang='fr-FR';u.pitch=1.8;u.rate=.65;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+let bloqueUtterance=null;
+function sayBloque(){
+ if(mute||!('speechSynthesis' in window)||!('SpeechSynthesisUtterance' in window))return;
+ try{
+  const synth=window.speechSynthesis;
+  synth.cancel();
+  const u=new SpeechSynthesisUtterance('Bloqué !');
+  u.lang='fr-FR';u.pitch=1.65;u.rate=.78;u.volume=1;
+  const voices=synth.getVoices();
+  const french=voices.find(v=>v.lang.toLowerCase()==='fr-fr')||voices.find(v=>v.lang.toLowerCase().startsWith('fr'));
+  if(french)u.voice=french;
+  bloqueUtterance=u;
+  u.onend=u.onerror=()=>{if(bloqueUtterance===u)bloqueUtterance=null};
+  synth.speak(u);
+  // Some browsers pause speech after a tab has been idle.
+  if(synth.paused)synth.resume();
+ }catch(e){console.warn('Bloque voice unavailable:',e)}
+}
+function bloque(){
+ let d=document.createElement('div');d.className='bq';d.textContent='BLOQUÉÉÉ!';document.body.append(d);
+ snd('bq');setTimeout(()=>d.remove(),2200);sayBloque();
+}
 function take(t,ix){let h=S.hands[t],cs=ix.map(i=>h[i]);cs.forEach(c=>{let k=S.hl[t].indexOf(c);if(k>=0)S.hl[t].splice(k,1)});S.hands[t]=h.filter((c,i)=>!ix.includes(i));return cs}
-function doMeld(t,ix){let cs=ix.map(i=>S.hands[t][i]),r=okSet(cs);if(!r)return false;take(t,ix);S.melds[t].push({r,c:cs});cs.forEach(c=>sfx(c));S.fx=(S.fx||0)+1;S.special=cs.filter(c=>c==='JD'||c==='QS');S.msg=nm(t)+' laid down '+cs.length+' cards.';snd('meld');chk(t);return true}
-function doAdd(t,ix,mi){let m=S.melds[t][mi],cs=ix.map(i=>S.hands[t][i]);if(!m||!cs.length||!cs.every(c=>wild(c)||rk(c)==m.r))return false;take(t,ix);m.c.push(...cs);cs.forEach(c=>sfx(c));S.fx=(S.fx||0)+1;S.special=cs.filter(c=>c==='JD'||c==='QS');S.msg=nm(t)+' added to a set.';snd('ext');chk(t);return true}
-function doDisc(t,i){let c=take(t,[i])[0];S.pile.push(c);S.turn=1-t;S.phase='draw';S.msg=nm(t)+' discarded.';snd('disc');S.hl[t]=[];if(rk(c)==='A'&&S.melds[1-t].some(m=>m.r==='A')){S.blk=1-t;S.bq++;S.msg=nm(t)+' discarded a '+rk(c)+'. '+nm(1-t)+' got BLOQUÉ!'}chk(t)}
+function doMeld(t,ix){let cs=ix.map(i=>S.hands[t][i]),r=okSet(cs);if(!r)return false;take(t,ix);S.melds[t].push({r,c:cs});cs.forEach(c=>sfx(c));S.fx=(S.fx||0)+1;S.special=cs.filter(c=>c==='JD'||c==='QS');S.msg=nm(t)+' laid down '+cs.length+' cards.';snd('meld');oneCardCheck(t);chk(t);return true}
+function doAdd(t,ix,mi){let m=S.melds[t][mi],cs=ix.map(i=>S.hands[t][i]);if(!m||!cs.length||!cs.every(c=>wild(c)||rk(c)==m.r))return false;take(t,ix);m.c.push(...cs);cs.forEach(c=>sfx(c));S.fx=(S.fx||0)+1;S.special=cs.filter(c=>c==='JD'||c==='QS');S.msg=nm(t)+' added to a set.';snd('ext');oneCardCheck(t);chk(t);return true}
+function doDisc(t,i){let c=take(t,[i])[0];S.pile.push(c);S.turn=1-t;S.phase='draw';S.msg=nm(t)+' discarded.';snd('disc');S.hl[t]=[];oneCardCheck(t);if(rk(c)==='A'&&S.melds[1-t].some(m=>m.r==='A')){S.blk=1-t;S.bq++;S.msg=nm(t)+' discarded a '+rk(c)+'. '+nm(1-t)+' got BLOQUÉ!'}chk(t)}
+function oneCardCheck(t){if(S.hands[t].length===1){S.oneEvent=(S.oneEvent||0)+1;S.oneWho=t}}
 function chk(t){if(!S.hands[t].length)endRound()}
-function endRound(){S.out=S.hands.findIndex(h=>!h.length);S.res=[0,1].map(i=>{let m=S.melds[i].reduce((a,x)=>a+x.c.reduce((b,c)=>b+pts(c),0),0),h=S.hands[i].reduce((a,c)=>a+pts(c),0);return{m,h,d:m-h}});S.res.forEach((r,i)=>S.scores[i]+=r.d);S.over=true}
+function endRound(){S.out=S.hands.findIndex(h=>!h.length);S.res=[0,1].map(i=>{let m=S.melds[i].reduce((a,x)=>a+x.c.reduce((b,c)=>b+pts(c),0),0),h=S.hands[i].reduce((a,c)=>a+pts(c),0);return{m,h,d:m-h}});S.res.forEach((r,i)=>S.scores[i]+=r.d);S.history=S.history||[];S.history.push({round:S.round,points:S.res.map(x=>x.d),totals:[...S.scores]});S.over=true}
 function save(){sel=[];render();if(!ai)sendS()}
 function aiTurn(){if(!S||S.over||S.turn!=1||!ai){busy=false;return}
 (S.blk!==1&&canTakePile(1))?dPile(1):dStock(1);
@@ -91,26 +134,36 @@ function menuH(){return`<div class="ov"><div class="card"><h2>♠ Dame de Pique 
 <div style="display:flex;gap:6px;align-items:center"><input id="cd" maxlength="5" placeholder="Room code" autocapitalize="characters" style="flex:1;min-width:0;padding:10px;border-radius:10px;border:1px solid #e6c36a88;background:#0006;color:#f3ead2;font:inherit;text-transform:uppercase"><button data-a="joinc" style="width:auto;margin:0">Join</button></div>
 ${net?'<p style="font-size:14px;color:var(--gold)">'+net+'</p>':''}${room&&net.includes('Waiting for your')?'<input id="lk" readonly value="'+lnk()+'" style="width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1px solid #e6c36a88;background:#0006;color:#f3ead2;font:13px sans-serif"><button data-a="share">Copy invite link</button>'+(location.protocol=='file:'?'<p style="font-size:12px">This link only works once the file is hosted online (e.g. GitHub Pages). Until then, share the room code.</p>':''):''}
 ${S?'<button class="s2" data-a="resume">Resume current game</button>':''}<details><summary>How to play</summary><p style="text-align:left;font-size:13px">Each turn: tap the deck (hidden card) or the top discard (you take the whole pile). Lay down 3+ cards of one rank with at least 2 natural cards and at most 1 wild (2 or Joker) per new set. Extend your own sets with matching cards or wilds. Cards with a blue + can be added to a blue-glowing set; green glow marks cards you just picked up. You may take the discard pile only if you already hold at least 2 natural cards of the same rank as its top card; otherwise draw from the deck. Then discard one card. <b>Bloque:</b> if you discard an Ace while your opponent has an Ace set, they must draw from the deck. Empty your hand to end the round. Sets score +, cards left in hand score −. 2–9 = 5, 10–A = 10, 2/Joker = 20, J♦ = 50, Q♠ = 100.</p></details></div></div>`}
+let seenSpecial=-1,seenOne=-1,showRules=false;
+function popup(text,cls){const e=document.createElement('div');e.className=cls;if(cls==='special-flash'){const b=document.createElement('div');b.className='big';b.textContent=text;e.append(b)}else e.textContent=text;document.body.append(e);setTimeout(()=>e.remove(),2700)}
+function roundValue(i){if(S.over&&S.res)return S.res[i].d;let meld=S.melds[i].reduce((n,m)=>n+m.c.reduce((x,c)=>x+pts(c),0),0);let hand=S.hands[i].reduce((n,c)=>n+pts(c),0);return meld-hand}
+function scoreH(i){return `<div class="scoreline"><span>Previous rounds: <b>${S.scores[i]-(S.over&&S.res?S.res[i].d:0)}</b></span><span>Current round: <b>${roundValue(i)>0?'+':''}${roundValue(i)}</b></span><span>Total${S.over?'':' if round ended now'}: <b>${S.scores[i]+(S.over?0:roundValue(i))}</b></span></div>`}
+function rulesH(){return `<div class="rules-panel"><div class="rules-inner"><h2>♠ Card point values</h2><table><tr><th>Card</th><th>Points</th></tr><tr><td>3–9</td><td>5</td></tr><tr><td>10, J, Q, K, A</td><td>10</td></tr><tr><td>J♦ (Jack of Diamonds)</td><td>50</td></tr><tr><td>Q♠ (Queen of Spades)</td><td>100</td></tr><tr><td>2 or Joker (wild)</td><td>20</td></tr></table><p>Cards in sets add points; cards left in hand subtract points.</p><h2>Previous rounds</h2>${S&&S.history?.length?`<table class="score-history"><tr><th>Round</th><th>Player 1</th><th>Player 2</th></tr>${S.history.map(x=>`<tr><td>${x.round}</td><td>${x.points[0]>0?'+':''}${x.points[0]}</td><td>${x.points[1]>0?'+':''}${x.points[1]}</td></tr>`).join('')}</table>`:'<p>No completed rounds yet.</p>'}<button data-a="closeRules">Close</button></div></div>`}
 function render(){S=ai?L:D;const a=$('#app');if(S&&!S.hl){S.hl=[[],[]];S.bq=0;S.blk=-1}
 if(!S||menu){a.innerHTML=menuH();return}
 me=ai?0:S.seats.indexOf(myid);const v=me<0?0:me,o=1-v,mine=me>=0&&!S.over&&S.turn==me&&(S.seats[1]||ai);
 const wait=!ai&&!S.seats[1],canJoin=wait&&me<0;
-let h=`<div class="bar"><h1>♠ DAME DE PIQUE · R${S.round}</h1><span><button class="s2" data-a="snd" style="padding:5px 10px">${mute?'🔇':'🔊'}</button> <button class="s2" data-a="menu" style="padding:5px 10px">Menu</button></span></div>`;
+let h=`<div class="bar"><h1>♠ DAME DE PIQUE · R${S.round}</h1><span><button class="s2" data-a="rules" style="padding:5px 10px">Points</button> <button class="s2" data-a="snd" style="padding:5px 10px">${mute?'🔇':'🔊'}</button> <button class="s2" data-a="menu" style="padding:5px 10px">Menu</button></span></div>`;
 if(net)h+=`<div class="lbl" style="text-align:center">${net}</div>`;
 if(wait){h+=`<div class="card" style="margin:20px auto"><h2>Waiting for your partner…</h2><p>Share this page’s link with her. She needs access that lets her interact, then she taps Join.</p>${canJoin?'<button data-a="join">Join as player 2</button>':''}</div>`;a.innerHTML=h;return}
-h+=`<div class="sec" style="max-height:30%;overflow:auto"><div class="lbl">${S.turn==o&&!S.over?'● ':''}${nm(o)} · ${S.hands[o].length} cards · <b>${S.scores[o]}</b> pts</div><div class="row">${S.melds[o].map((m,i)=>meldH(m,i,0)).join('')||'<span class="lbl">No sets yet</span>'}</div></div>`;
+h+=`<div class="sec player-panel ${S.turn==o&&!S.over?'active':''}" style="overflow:visible"><div class="lbl">${S.turn==o&&!S.over?'● ':''}${nm(o)} · ${S.hands[o].length} cards ${S.hands[o].length===1?'<span class="one-card">⚠ ONE CARD!</span>':''} ${S.turn==o&&!S.over?'<span class="turn-label">YOUR OPPONENT’S TURN</span>':''}</div>${scoreH(o)}<div class="row">${S.melds[o].map((m,i)=>meldH(m,i,0)).join('')||'<span class="lbl">No sets yet</span>'}</div></div>`;
 const top=S.pile[S.pile.length-1],dr=mine&&S.phase=='draw',bk=dr&&S.blk==me,hn=hlIdx(S.hands[v],S.hl[v]||[]),pl=mine&&S.phase=='play'?S.hands[v].map((c,i)=>i).filter(i=>ext(me,[i])>=0):[],hint=dr?(bk?'BLOQUÉ! Draw from the deck.':canTakePile(me)?'Tap the deck or take the discard pile.':'Discard pile requires 2 natural cards matching its top card.'):(ai&&S.turn==1&&!S.over?'Thinking…':'');
 h+=`<div class="tbl"><div class="pc ${dr?'g':''}" data-a="stock"><div class="c b"></div><b>Deck ${S.deck.length}</b></div>
 <div class="msg">${note||(S.msg||'')+(hint?'<br><b>'+hint+'</b>':'')}</div>
 <div class="pc ${dr&&!bk&&canTakePile(me)?'g':''}" data-a="pile">${top?card(top):'<div class="c e"></div>'}<b>Discards ${S.pile.length}</b></div></div>
-<div class="sec" style="flex:1;min-height:56px;overflow:auto"><div class="lbl">${S.turn==v&&!S.over?'● ':''}${nm(v)} · <b>${S.scores[v]}</b> pts</div><div class="row">${S.melds[v].map((m,i)=>meldH(m,i,mine&&S.phase=='play'&&sel.length,mine&&S.phase=='play'&&S.hands[v].some(c=>wild(c)||rk(c)==m.r))).join('')||'<span class="lbl">No sets yet</span>'}</div></div>
+<div class="sec player-panel ${S.turn==v&&!S.over?'active':''}" style="min-height:56px;overflow:visible"><div class="lbl">${S.turn==v&&!S.over?'● ':''}${nm(v)} · ${S.hands[v].length} cards ${S.hands[v].length===1?'<span class="one-card">⚠ ONE CARD!</span>':''} ${S.turn==v&&!S.over?'<span class="turn-label">YOUR TURN</span>':''}</div>${scoreH(v)}<div class="row">${S.melds[v].map((m,i)=>meldH(m,i,mine&&S.phase=='play'&&sel.length,mine&&S.phase=='play'&&S.hands[v].some(c=>wild(c)||rk(c)==m.r))).join('')||'<span class="lbl">No sets yet</span>'}</div></div>
 <div class="hand">${S.hands[v].map((c,i)=>card(c,{i,s:sel.includes(i),n:hn.includes(i),p:pl.includes(i)})).join('')}</div>
 <div class="acts"><button data-a="meld" ${mine&&S.phase=='play'&&okSet(sel.map(i=>S.hands[v][i]))?'':'disabled'}>Lay down set</button><button data-a="ext" ${mine&&S.phase=='play'&&sel.length&&ext(me,sel)>=0?'':'disabled'}>Extend set</button><button data-a="disc" ${mine&&S.phase=='play'&&sel.length==1?'':'disabled'}>Discard</button></div>
 `;
 if(S.over){const r=S.res;h+=`<div class="ov"><div class="card"><h2>${S.out<0?'Deck ran out':nm(S.out)+(S.out==me||ai&&S.out==0?' went out!':' went out!')}</h2><table><tr><th></th><th>${nm(v)}</th><th>${nm(o)}</th></tr>
 <tr><td>Sets</td><td>+${r[v].m}</td><td>+${r[o].m}</td></tr><tr><td>In hand</td><td>−${r[v].h}</td><td>−${r[o].h}</td></tr><tr><td>Round</td><td>${r[v].d}</td><td>${r[o].d}</td></tr><tr><th>Total</th><th>${S.scores[v]}</th><th>${S.scores[o]}</th></tr></table>
 ${me>=0?'<button data-a="next">Next round</button>':''}</div></div>`}
-a.innerHTML=h;if(seen>=0&&S.bq>seen)bloque();seen=S.bq;if(note!=ln){if(note)snd('bad');ln=note}if(mine&&S.phase=='draw'){if(!tp)snd('turn');tp=1}else tp=0;let ek=S.over?S.round+'-'+S.scores:'';if(ek&&ek!=es)endFx(S.res[v].d>S.res[o].d);es=ek;
+a.innerHTML=h+(showRules?rulesH():'');
+if(S.fx&&S.fx>seenSpecial&&S.special?.length){popup(S.special.map(c=>c==='JD'?'♦ JACK OF DIAMONDS! +50':'♠ QUEEN OF SPADES! +100').join('  ·  '),'special-flash')}
+seenSpecial=S.fx||0;
+if(S.oneEvent&&S.oneEvent>seenOne&&S.oneWho>=0){popup((S.oneWho===me?'YOU HAVE':'OPPONENT HAS')+' ONE CARD!','one-flash');snd('turn')}
+seenOne=S.oneEvent||0;
+if(S.bq>seen&&S.bq>0)bloque();seen=S.bq;if(note!=ln){if(note)snd('bad');ln=note}if(mine&&S.phase=='draw'){if(!tp)snd('turn');tp=1}else tp=0;let ek=S.over?S.round+'-'+S.scores:'';if(ek&&ek!=es)endFx(S.res[v].d>S.res[o].d);es=ek;
 if(ai&&S.turn==1&&!S.over&&!busy){busy=true;setTimeout(aiTurn,1000)}}
 $('#app').onclick=e=>{ac();const x=e.target.closest('[data-a],[data-i],[data-m]');if(!x||!S&&!x.dataset.a)return;const d=x.dataset;note='';
 const mine=S&&me>=0&&!S.over&&S.turn==me&&(S.seats[1]||ai);
@@ -124,8 +177,10 @@ case'share':{let u=lnk(),i=$('#lk'),m=r=>{net='Waiting for your partner\u2026 Co
 let f=()=>{let ok=0;try{i.select();i.setSelectionRange(0,999);ok=document.execCommand('copy')}catch(e){}m(ok?'link copied!':'tap the link above and copy it');let j=$('#lk');if(j&&!ok){j.focus();j.select()}};
 if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(u).then(()=>m('link copied!'),f);else f();return}
 case'resume':menu=false;return render();
-case'snd':mute=!mute;return render();
+case'snd':mute=!mute;if(mute&&'speechSynthesis' in window)window.speechSynthesis.cancel();return render();
 case'menu':menu=true;return render();
+case'rules':showRules=true;return render();
+case'closeRules':showRules=false;return render();
 case'join':D.seats[1]=myid;return save();
 case'stock':if(mine&&S.phase=='draw'){dStock(me);save()}return;
 case'pile':if(mine&&S.phase=='draw'&&S.pile.length){if(S.blk==me){note='Bloqué! You must draw from the deck.';return render()}if(!canTakePile(me)){note='You need 2 natural cards matching the top discard to take the pile.';return render()}dPile(me);save()}return;
