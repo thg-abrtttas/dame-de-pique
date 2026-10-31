@@ -317,7 +317,7 @@ ${me>=0?'<button data-a="next">Next round</button>':''}</div></div>`}
  if(mine&&S.phase=='draw'){if(!tp)snd('turn');tp=1}else tp=0;
  if(S.over&&me>=0){const k=S.gid+'-'+S.round;if(ST.last!=k){ST.last=k;const x=ST[ai?'ai':'on'],d=S.res[v].d,e=S.res[o].d;d>e?x.w++:d<e?x.l++:x.t++;x.b=x.b==null?d:Math.max(x.b,d);sv('dp_stats',ST)}}
  let ek=S.over?S.round+'-'+S.scores:'';if(ek&&ek!=es)endFx(S.res[v].d>S.res[o].d);es=ek;
- const one=[0,1].map(i=>S.hands[i].length==1&&!S.over);if(one.some((x,i)=>x&&!oc[i]))oneCard(bqn?1500:0);oc=one;
+ const one=[0,1].map(i=>S.hands[i].length==1&&!S.over);if(one.some((x,i)=>i==o&&x&&!oc[i]))oneCard(bqn?1500:0);oc=one; /* only announce when the OPPONENT is down to one card */
  if(ai&&S.turn==1&&!S.over&&!busy){busy=true;const tk=aiTok;setTimeout(()=>aiTurn(tk),1000)}}
 
 /* ---------- input ---------- */
