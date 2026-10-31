@@ -19,7 +19,7 @@ h1{margin:0;font-size:17px;color:var(--gold);letter-spacing:2px;text-shadow:0 2p
 @keyframes bq{0%{transform:translate(-50%,-50%) scale(.2) rotate(-15deg);opacity:0}15%{transform:translate(-50%,-50%) scale(1.3) rotate(6deg);opacity:1}30%{transform:translate(-50%,-50%) scale(1) rotate(-4deg)}85%{opacity:1}100%{transform:translate(-50%,-50%) rotate(0);opacity:0}}
 .row{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 .meld{display:flex;position:relative;padding:4px 36px 4px 4px;border-radius:8px;background:#0004}.meld i{position:absolute;right:5px;top:3px;font:700 12px sans-serif;color:var(--gold);font-style:normal}
-.meld .c{margin-right:-22px}.meld.t{outline:2px dashed var(--gold);cursor:pointer}
+.meld .c{margin-right:0}.meld{flex-wrap:wrap;align-items:center;gap:3px;padding:5px 24px 5px 5px;max-width:100%}.meld .c{z-index:1}.meld .c:last-of-type{z-index:2}.meld.t{outline:2px dashed var(--gold);cursor:pointer}
 .sec{padding:5px 7px;border-radius:10px;background:#0003}
 .lbl{font-size:12px;opacity:.8;margin-bottom:4px}
 .tbl{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 12px;background:#0a4a2f;border-radius:40px/26px;border:3px solid #7a5a22;box-shadow:inset 0 0 25px #000a}
@@ -52,7 +52,8 @@ S.hands=[sortH(d.splice(0,15)),sortH(d.splice(0,15))];S.pile=[d.pop()];S.deck=d;
 function okSet(cs){if(cs.length<3)return null;let n=cs.filter(c=>!wild(c));if(n.length<2||cs.length-n.length>1)return null;let r=rk(n[0]);return n.every(c=>rk(c)==r)?r:null}
 function dStock(t){if(!S.deck.length){let p=S.pile.pop();S.deck=shuf(S.pile);S.pile=[p]}if(!S.deck.length)return endRound();
 let c=S.deck.pop();S.hands[t].push(c);sortH(S.hands[t]);S.hl[t]=[c];S.blk=-1;S.phase='play';S.msg=nm(t)+' drew from the deck.';snd('draw')}
-function dPile(t){let n=S.pile.length;S.hl[t]=S.pile.slice();S.hands[t]=sortH(S.hands[t].concat(S.pile));S.pile=[];S.phase='play';S.msg=nm(t)+' took '+n+' card'+(n>1?'s':'')+' from the table.';snd('pile')}
+function canTakePile(t){let top=S.pile[S.pile.length-1];return !!top&&!wild(top)&&S.hands[t].filter(c=>!wild(c)&&rk(c)===rk(top)).length>=2}
+function dPile(t){if(!canTakePile(t)||S.blk===t)return false;let n=S.pile.length;S.hl[t]=S.pile.slice();S.hands[t]=sortH(S.hands[t].concat(S.pile));S.pile=[];S.phase='play';S.msg=nm(t)+' took '+n+' card'+(n>1?'s':'')+' from the table.';snd('pile');return true}
 let AC=null,audioReady=false;
 function ac(){if(mute)return false;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume().then(()=>{audioReady=true}).catch(()=>{});else audioReady=true;return true}catch(e){return false}}
 function tone(f,t0,d,ty,v){if(mute||!AC)return;let o=AC.createOscillator(),g=AC.createGain(),n=AC.currentTime+t0;o.type=ty;o.frequency.value=f;g.gain.setValueAtTime(.0001,n);g.gain.linearRampToValueAtTime(Math.min(v,.13),n+.012);g.gain.exponentialRampToValueAtTime(.0001,n+d);o.connect(g);g.connect(AC.destination);o.onended=()=>{o.disconnect();g.disconnect()};o.start(n);o.stop(n+d+.01)}
@@ -71,8 +72,7 @@ function chk(t){if(!S.hands[t].length)endRound()}
 function endRound(){S.out=S.hands.findIndex(h=>!h.length);S.res=[0,1].map(i=>{let m=S.melds[i].reduce((a,x)=>a+x.c.reduce((b,c)=>b+pts(c),0),0),h=S.hands[i].reduce((a,c)=>a+pts(c),0);return{m,h,d:m-h}});S.res.forEach((r,i)=>S.scores[i]+=r.d);S.over=true}
 function save(){sel=[];render();if(!ai)sendS()}
 function aiTurn(){if(!S||S.over||S.turn!=1||!ai){busy=false;return}
-let top=S.pile[S.pile.length-1],H=S.hands[1];
-(S.blk!=1&&top&&(wild(top)||pts(top)>=50||S.pile.length>=4||H.some(c=>rk(c)==rk(top))||S.melds[1].some(m=>m.r==rk(top))))?dPile(1):dStock(1);
+(S.blk!==1&&canTakePile(1))?dPile(1):dStock(1);
 render();setTimeout(aiPlay,1100)}
 function aiPlay(){busy=false;if(S.over)return;const h=()=>S.hands[1],ms=S.melds[1];
 for(let g=1;g&&!S.over;){g=0;let by={};h().forEach((c,i)=>{if(!wild(c))(by[rk(c)]=by[rk(c)]||[]).push(i)});let w=h().findIndex(wild);
@@ -82,14 +82,15 @@ if(!S.over){let cnt={};h().forEach(c=>cnt[rk(c)]=(cnt[rk(c)]||0)+1);let b=0,bs=1
 save()}
 function card(c,o={}){if(o.b)return`<div class="c b ${o.m?'m':''}"></div>`;let j=rk(c)=='X';
 return`<div class="c ${'HD'.includes(su(c))?'r':''} ${j?'j':''} ${o.s?'s':''} ${o.n?'n':''} ${o.m?'m':''} ${o.p?'p':''} ${c=='JD'||c=='QS'?'k':''}" ${o.i!=null?'data-i="'+o.i+'"':''}>${j?'<small>★</small>JK':rk(c)+'<small>'+SY[su(c)]+'</small>'}</div>`}
+/* Every card in a meld is visible; wild cards precede natural cards. */
 const meldH=(m,mi,t,x)=>`<div class="meld ${t?'t':''} ${x?'x':''}" ${t?'data-m="'+mi+'"':''}>${[...m.c].sort((a,b)=>sc(a)-sc(b)).map(c=>card(c,{m:1})).join('')}<i>${m.c.length}</i></div>`;
-const sc=c=>wild(c)?3:(c=='JD'||c=='QS')?2:1;
+const sc=c=>wild(c)?0:(c=='JD'||c=='QS')?2:1;
 function menuH(){return`<div class="ov"><div class="card"><h2>♠ Dame de Pique ♠</h2>
 <button data-a="ai">Play vs Computer</button>
 <button data-a="host">Host online game</button>
 <div style="display:flex;gap:6px;align-items:center"><input id="cd" maxlength="5" placeholder="Room code" autocapitalize="characters" style="flex:1;min-width:0;padding:10px;border-radius:10px;border:1px solid #e6c36a88;background:#0006;color:#f3ead2;font:inherit;text-transform:uppercase"><button data-a="joinc" style="width:auto;margin:0">Join</button></div>
 ${net?'<p style="font-size:14px;color:var(--gold)">'+net+'</p>':''}${room&&net.includes('Waiting for your')?'<input id="lk" readonly value="'+lnk()+'" style="width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1px solid #e6c36a88;background:#0006;color:#f3ead2;font:13px sans-serif"><button data-a="share">Copy invite link</button>'+(location.protocol=='file:'?'<p style="font-size:12px">This link only works once the file is hosted online (e.g. GitHub Pages). Until then, share the room code.</p>':''):''}
-${S?'<button class="s2" data-a="resume">Resume current game</button>':''}<details><summary>How to play</summary><p style="text-align:left;font-size:13px">Each turn: tap the deck (hidden card) or the top discard (you take the whole pile). Lay down 3+ cards of one rank with at least 2 natural cards and at most 1 wild (2 or Joker) per new set. Extend your own sets with matching cards or wilds. Cards with a blue + can be added to a blue-glowing set; green glow marks cards you just picked up. Then discard one card. <b>Bloque:</b> if you discard an Ace while your opponent has an Ace set, they must draw from the deck. Empty your hand to end the round. Sets score +, cards left in hand score −. 2–9 = 5, 10–A = 10, 2/Joker = 20, J♦ = 50, Q♠ = 100.</p></details></div></div>`}
+${S?'<button class="s2" data-a="resume">Resume current game</button>':''}<details><summary>How to play</summary><p style="text-align:left;font-size:13px">Each turn: tap the deck (hidden card) or the top discard (you take the whole pile). Lay down 3+ cards of one rank with at least 2 natural cards and at most 1 wild (2 or Joker) per new set. Extend your own sets with matching cards or wilds. Cards with a blue + can be added to a blue-glowing set; green glow marks cards you just picked up. You may take the discard pile only if you already hold at least 2 natural cards of the same rank as its top card; otherwise draw from the deck. Then discard one card. <b>Bloque:</b> if you discard an Ace while your opponent has an Ace set, they must draw from the deck. Empty your hand to end the round. Sets score +, cards left in hand score −. 2–9 = 5, 10–A = 10, 2/Joker = 20, J♦ = 50, Q♠ = 100.</p></details></div></div>`}
 function render(){S=ai?L:D;const a=$('#app');if(S&&!S.hl){S.hl=[[],[]];S.bq=0;S.blk=-1}
 if(!S||menu){a.innerHTML=menuH();return}
 me=ai?0:S.seats.indexOf(myid);const v=me<0?0:me,o=1-v,mine=me>=0&&!S.over&&S.turn==me&&(S.seats[1]||ai);
@@ -98,10 +99,10 @@ let h=`<div class="bar"><h1>♠ DAME DE PIQUE · R${S.round}</h1><span><button c
 if(net)h+=`<div class="lbl" style="text-align:center">${net}</div>`;
 if(wait){h+=`<div class="card" style="margin:20px auto"><h2>Waiting for your partner…</h2><p>Share this page’s link with her. She needs access that lets her interact, then she taps Join.</p>${canJoin?'<button data-a="join">Join as player 2</button>':''}</div>`;a.innerHTML=h;return}
 h+=`<div class="sec" style="max-height:30%;overflow:auto"><div class="lbl">${S.turn==o&&!S.over?'● ':''}${nm(o)} · ${S.hands[o].length} cards · <b>${S.scores[o]}</b> pts</div><div class="row">${S.melds[o].map((m,i)=>meldH(m,i,0)).join('')||'<span class="lbl">No sets yet</span>'}</div></div>`;
-const top=S.pile[S.pile.length-1],dr=mine&&S.phase=='draw',bk=dr&&S.blk==me,hn=hlIdx(S.hands[v],S.hl[v]||[]),pl=mine&&S.phase=='play'?S.hands[v].map((c,i)=>i).filter(i=>ext(me,[i])>=0):[],hint=dr?(bk?'Draw from the deck.':'Tap the deck or top discard.'):(ai&&S.turn==1&&!S.over?'Thinking…':'');
+const top=S.pile[S.pile.length-1],dr=mine&&S.phase=='draw',bk=dr&&S.blk==me,hn=hlIdx(S.hands[v],S.hl[v]||[]),pl=mine&&S.phase=='play'?S.hands[v].map((c,i)=>i).filter(i=>ext(me,[i])>=0):[],hint=dr?(bk?'BLOQUÉ! Draw from the deck.':canTakePile(me)?'Tap the deck or take the discard pile.':'Discard pile requires 2 natural cards matching its top card.'):(ai&&S.turn==1&&!S.over?'Thinking…':'');
 h+=`<div class="tbl"><div class="pc ${dr?'g':''}" data-a="stock"><div class="c b"></div><b>Deck ${S.deck.length}</b></div>
 <div class="msg">${note||(S.msg||'')+(hint?'<br><b>'+hint+'</b>':'')}</div>
-<div class="pc ${dr&&top&&!bk?'g':''}" data-a="pile">${top?card(top):'<div class="c e"></div>'}<b>Discards ${S.pile.length}</b></div></div>
+<div class="pc ${dr&&!bk&&canTakePile(me)?'g':''}" data-a="pile">${top?card(top):'<div class="c e"></div>'}<b>Discards ${S.pile.length}</b></div></div>
 <div class="sec" style="flex:1;min-height:56px;overflow:auto"><div class="lbl">${S.turn==v&&!S.over?'● ':''}${nm(v)} · <b>${S.scores[v]}</b> pts</div><div class="row">${S.melds[v].map((m,i)=>meldH(m,i,mine&&S.phase=='play'&&sel.length,mine&&S.phase=='play'&&S.hands[v].some(c=>wild(c)||rk(c)==m.r))).join('')||'<span class="lbl">No sets yet</span>'}</div></div>
 <div class="hand">${S.hands[v].map((c,i)=>card(c,{i,s:sel.includes(i),n:hn.includes(i),p:pl.includes(i)})).join('')}</div>
 <div class="acts"><button data-a="meld" ${mine&&S.phase=='play'&&okSet(sel.map(i=>S.hands[v][i]))?'':'disabled'}>Lay down set</button><button data-a="ext" ${mine&&S.phase=='play'&&sel.length&&ext(me,sel)>=0?'':'disabled'}>Extend set</button><button data-a="disc" ${mine&&S.phase=='play'&&sel.length==1?'':'disabled'}>Discard</button></div>
@@ -127,7 +128,7 @@ case'snd':mute=!mute;return render();
 case'menu':menu=true;return render();
 case'join':D.seats[1]=myid;return save();
 case'stock':if(mine&&S.phase=='draw'){dStock(me);save()}return;
-case'pile':if(mine&&S.phase=='draw'&&S.pile.length){if(S.blk==me){note='Bloqué! You must draw from the deck.';return render()}dPile(me);save()}return;
+case'pile':if(mine&&S.phase=='draw'&&S.pile.length){if(S.blk==me){note='Bloqué! You must draw from the deck.';return render()}if(!canTakePile(me)){note='You need 2 natural cards matching the top discard to take the pile.';return render()}dPile(me);save()}return;
 case'ext':if(mine&&S.phase=='play'){let k=ext(me,sel);if(k>=0&&doAdd(me,sel,k))return save()}return;
 case'meld':if(mine&&S.phase=='play'){if(doMeld(me,sel))return save();note='A new set needs at least 2 matching natural cards and at most 1 Joker or 2.';render()}return;
 case'disc':if(mine&&S.phase=='play'&&sel.length==1){doDisc(me,sel[0]);save()}return;
